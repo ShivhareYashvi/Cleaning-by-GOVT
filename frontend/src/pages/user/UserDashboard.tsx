@@ -195,6 +195,30 @@ export function UserDashboard() {
       ) : (
         <EmptyState title="No pickups yet" description="Schedule your first pickup to unlock live tracking and analytics." />
       )}
+      <article className="glass-card rounded-[2rem] p-6">
+        <div className="flex items-center gap-3">
+          <MessageSquareWarning className="h-6 w-6 text-emerald-600" />
+          <h2 className="text-2xl font-black text-slate-950">In-App Chat (SMS)</h2>
+        </div>
+        <p className="mt-2 text-sm text-slate-600">Send an instant SMS to any registered driver or official using Fast2SMS.</p>
+        <form className="mt-4 grid gap-4 sm:grid-cols-[1fr_2fr_auto]" onSubmit={async (e) => {
+          e.preventDefault();
+          const target = e.currentTarget;
+          const phone = (target.elements.namedItem('phone') as HTMLInputElement).value;
+          const message = (target.elements.namedItem('message') as HTMLInputElement).value;
+          try {
+            await api.post('/chat/send', { phone, message, user_id: user.id });
+            alert('SMS Message Sent successfully!');
+            target.reset();
+          } catch (error) {
+            alert('Failed to send SMS message.');
+          }
+        }}>
+          <input name="phone" className="rounded-2xl border border-slate-200 px-4 py-3" placeholder="Phone Number (10 digits)" required />
+          <input name="message" className="rounded-2xl border border-slate-200 px-4 py-3" placeholder="Type your message..." required />
+          <button type="submit" className="rounded-2xl bg-slate-950 px-5 py-3 font-bold text-white">Send SMS</button>
+        </form>
+      </article>
       <p className="text-sm text-slate-500">Need a driver account to push live coordinates? <Link className="font-bold text-emerald-700" to="/register">Create one here.</Link></p>
     </section>
   );

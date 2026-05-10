@@ -21,11 +21,12 @@ class Settings(BaseSettings):
     frontend_origin: AnyHttpUrl | str = "http://localhost:5173"
     upload_dir: str = str((Path(__file__).resolve().parents[2] / "uploads").resolve())
     max_upload_size_mb: int = 10
-    twilio_account_sid: str | None = None
-    twilio_auth_token: str | None = None
-    twilio_from_phone: str | None = None
+    fast2sms_api_key: str | None = None
+    fast2sms_sender_id: str | None = None
+    fast2sms_template_id: str | None = None
 
 
 @lru_cache
 def get_settings() -> Settings:
     return Settings()
+

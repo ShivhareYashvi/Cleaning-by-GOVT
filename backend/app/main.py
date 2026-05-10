@@ -6,9 +6,17 @@ from fastapi.staticfiles import StaticFiles
 
 from app.api.v1.router import router as api_v1_router
 from app.core.config import get_settings
+from app.db import engine
+from app.db_base import Base
+
+# Import all models so SQLAlchemy registers them before create_all
+import app.models  # noqa: F401
 
 settings = get_settings()
 Path(settings.upload_dir).mkdir(parents=True, exist_ok=True)
+
+# Auto-create tables (works for SQLite dev; use Alembic for production)
+Base.metadata.create_all(bind=engine)
 
 app = FastAPI(
     title=settings.app_name,
@@ -18,8 +26,8 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[str(settings.frontend_origin)],
-    allow_credentials=True,
+    allow_origins=["*"],
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )

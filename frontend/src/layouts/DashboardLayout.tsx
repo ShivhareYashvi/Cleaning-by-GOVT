@@ -2,10 +2,10 @@ import { Recycle } from 'lucide-react';
 import { NavLink, Outlet, useNavigate } from 'react-router-dom';
 import { useSessionStore } from '../store/session';
 
-const links = [
-  { to: '/dashboard/user', label: 'Citizen' },
-  { to: '/dashboard/driver', label: 'Driver' },
-  { to: '/dashboard/admin', label: 'Admin' },
+const links: Array<{ to: string; label: string; role?: string }> = [
+  { to: '/dashboard/user', label: 'Citizen', role: 'citizen' },
+  { to: '/dashboard/driver', label: 'Driver', role: 'driver' },
+  { to: '/dashboard/admin', label: 'Admin', role: 'admin' },
   { to: '/features', label: 'Features' }
 ];
 
@@ -30,7 +30,9 @@ export function DashboardLayout() {
           </div>
           <div className="flex flex-col items-start gap-3 sm:items-end">
             <nav className="flex flex-wrap gap-2">
-              {links.map((link) => (
+              {links
+                .filter((link) => !link.role || link.role === user?.role)
+                .map((link) => (
                 <NavLink
                   key={link.to}
                   to={link.to}

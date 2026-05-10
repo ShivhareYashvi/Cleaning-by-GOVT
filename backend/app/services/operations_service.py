@@ -158,6 +158,15 @@ class OperationsService:
         session.add(notification)
         session.commit()
         session.refresh(notification)
+        
+        user = session.scalar(select(User).where(User.id == payload.user_id))
+        if user and user.phone:
+            try:
+                from app.services.sms_service import send_twilio_sms
+                send_twilio_sms(user.phone, f"EcoSync Alert: {notification.message}")
+            except Exception as e:
+                print(f"Failed to send Twilio notification: {e}")
+                
         return NotificationRead.model_validate(notification)
 
     def list_drivers(self, session: Session) -> list[DriverRead]:

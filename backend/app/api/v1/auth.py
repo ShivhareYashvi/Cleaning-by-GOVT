@@ -16,7 +16,7 @@ def request_otp(payload: OTPRequest, session: Session = Depends(get_db)) -> OTPR
     session.commit()
     message = "OTP sent to the registered phone number."
     if record.delivery_channel != "sms":
-        message = "OTP generated but not sent. Configure Twilio SMS credentials to enable automatic delivery."
+        message = "OTP generated but not sent. Ensure your Twilio account is configured and the number is verified on your trial account."
     return OTPResponse(
         phone=payload.phone,
         expires_in_seconds=otp_service.ttl_seconds,

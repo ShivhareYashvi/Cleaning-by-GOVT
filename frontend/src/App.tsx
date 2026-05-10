@@ -1,4 +1,5 @@
 import { Navigate, Route, Routes } from 'react-router-dom';
+import { ProtectedRoute } from './components/ProtectedRoute';
 import { DashboardLayout } from './layouts/DashboardLayout';
 import { AdminDashboard } from './pages/admin/AdminDashboard';
 import { DriverDashboard } from './pages/driver/DriverDashboard';
@@ -16,9 +17,15 @@ export default function App() {
       <Route path="/register" element={<RegisterPage />} />
       <Route path="/dashboard" element={<DashboardLayout />}>
         <Route index element={<Navigate to="/dashboard/user" replace />} />
-        <Route path="user" element={<UserDashboard />} />
-        <Route path="driver" element={<DriverDashboard />} />
-        <Route path="admin" element={<AdminDashboard />} />
+        <Route element={<ProtectedRoute allowedRoles={['citizen']} />}>
+          <Route path="user" element={<UserDashboard />} />
+        </Route>
+        <Route element={<ProtectedRoute allowedRoles={['driver']} />}>
+          <Route path="driver" element={<DriverDashboard />} />
+        </Route>
+        <Route element={<ProtectedRoute allowedRoles={['admin']} />}>
+          <Route path="admin" element={<AdminDashboard />} />
+        </Route>
       </Route>
       <Route path="/features" element={<DashboardLayout />}>
         <Route index element={<FeatureModulesPage />} />

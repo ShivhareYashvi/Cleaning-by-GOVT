@@ -5,6 +5,7 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, selectinload
 
+from app.core.config import get_settings
 from app.core.security import create_access_token, hash_password, verify_password
 from app.models.driver import Driver
 from app.models.enums import DriverAvailability, UserRole
@@ -12,6 +13,8 @@ from app.models.user import User
 from app.schemas.auth import LoginRequest, RegisterRequest, TokenResponse
 from app.schemas.user import UserRead
 from app.services.otp_service import otp_service
+
+_settings = get_settings()
 
 
 class AuthService:
@@ -25,7 +28,8 @@ class AuthService:
             existing_by_email = session.scalar(select(User).where(User.email == payload.email))
             if existing_by_email is not None:
                 raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Email is already registered")
-        if not otp_service.is_verified(session, payload.phone):
+        # Skip OTP gate in local dev — enforce in staging/production only
+        if _settings.environment != "local" and not otp_service.is_verified(session, payload.phone):
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Phone number must be OTP verified before registration")
         if payload.role == UserRole.DRIVER and not payload.vehicle_number:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Driver registrations require a vehicle number")
