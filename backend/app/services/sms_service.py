@@ -1,27 +1,26 @@
 import os
 import requests
 
-TWILIO_ACCOUNT_SID = os.getenv("TWILIO_ACCOUNT_SID")
-TWILIO_AUTH_TOKEN = os.getenv("TWILIO_AUTH_TOKEN")
-TWILIO_FROM_PHONE = os.getenv("TWILIO_FROM_PHONE")
+from app.core.config import get_settings
 
+settings = get_settings()
 
 def send_twilio_sms(to_phone: str, message: str) -> None:
     try:
         # Ensure the phone number has a + prefix (assume India +91 if missing and 10 digits)
         formatted_phone = to_phone if to_phone.startswith('+') else f"+91{to_phone[-10:]}"
         
-        if not (TWILIO_ACCOUNT_SID and TWILIO_AUTH_TOKEN and TWILIO_FROM_PHONE):
+        if not (settings.twilio_account_sid and settings.twilio_auth_token and settings.twilio_from_number):
             raise RuntimeError(
                 "Twilio credentials are not configured. Set TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, "
-                "and TWILIO_FROM_PHONE in environment variables."
+                "and TWILIO_FROM_NUMBER in environment variables."
             )
-        url = f"https://api.twilio.com/2010-04-01/Accounts/{TWILIO_ACCOUNT_SID}/Messages.json"
-        auth = (TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN)
+        url = f"https://api.twilio.com/2010-04-01/Accounts/{settings.twilio_account_sid}/Messages.json"
+        auth = (settings.twilio_account_sid, settings.twilio_auth_token)
         data = {
             "To": formatted_phone,
             "Body": message,
-            "From": TWILIO_FROM_PHONE
+            "From": settings.twilio_from_number
         }
         
         # Don't block the main thread too long, timeout=5

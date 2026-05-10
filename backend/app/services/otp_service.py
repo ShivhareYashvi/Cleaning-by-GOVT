@@ -10,9 +10,7 @@ from app.core.config import get_settings
 from app.core.security import hash_password, verify_password
 from app.models.otp_challenge import OTPChallenge
 
-TWILIO_ACCOUNT_SID = os.getenv("TWILIO_ACCOUNT_SID")
-TWILIO_AUTH_TOKEN = os.getenv("TWILIO_AUTH_TOKEN")
-TWILIO_VERIFY_SERVICE_SID = os.getenv("TWILIO_VERIFY_SERVICE_SID")
+
 
 settings = get_settings()
 
@@ -47,13 +45,13 @@ class OTPService:
         formatted_phone = phone if phone.startswith('+') else f"+91{phone[-10:]}"
         
         try:
-            if not (TWILIO_ACCOUNT_SID and TWILIO_AUTH_TOKEN and TWILIO_VERIFY_SERVICE_SID):
+            if not (settings.twilio_account_sid and settings.twilio_auth_token and settings.twilio_verify_service_sid):
                 raise RuntimeError(
                     "Twilio credentials are not configured. Set TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, "
                     "and TWILIO_VERIFY_SERVICE_SID in environment variables."
                 )
-            url = f"https://verify.twilio.com/v2/Services/{TWILIO_VERIFY_SERVICE_SID}/Verifications"
-            auth = (TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN)
+            url = f"https://verify.twilio.com/v2/Services/{settings.twilio_verify_service_sid}/Verifications"
+            auth = (settings.twilio_account_sid, settings.twilio_auth_token)
             data = {
                 "To": formatted_phone,
                 "Channel": "sms"
@@ -116,13 +114,13 @@ class OTPService:
         import requests
         formatted_phone = phone if phone.startswith('+') else f"+91{phone[-10:]}"
         try:
-            if not (TWILIO_ACCOUNT_SID and TWILIO_AUTH_TOKEN and TWILIO_VERIFY_SERVICE_SID):
+            if not (settings.twilio_account_sid and settings.twilio_auth_token and settings.twilio_verify_service_sid):
                 raise RuntimeError(
                     "Twilio credentials are not configured. Set TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, "
                     "and TWILIO_VERIFY_SERVICE_SID in environment variables."
                 )
-            url = f"https://verify.twilio.com/v2/Services/{TWILIO_VERIFY_SERVICE_SID}/VerificationCheck"
-            auth = (TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN)
+            url = f"https://verify.twilio.com/v2/Services/{settings.twilio_verify_service_sid}/VerificationCheck"
+            auth = (settings.twilio_account_sid, settings.twilio_auth_token)
             data = {
                 "To": formatted_phone,
                 "Code": code
