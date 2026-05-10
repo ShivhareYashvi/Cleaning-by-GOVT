@@ -1,0 +1,20 @@
+# Dependencies
+node_modules/
+.venv/
+__pycache__/
+*.py[cod]
+
+# Build output
+dist/
+build/
+.coverage/
+htmlcov/
+*.tsbuildinfo
+
+# Environment and local files
+.env
+.env.*
+!.env.example
+.DS_Store
+.vscode/
+.idea/
