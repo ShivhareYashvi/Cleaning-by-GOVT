@@ -22,3 +22,5 @@ services:
         sync: false
       - key: TWILIO_FROM_NUMBER
         sync: false
+      - key: DATABASE_URL
+        value: sqlite:///./ecosync.db
