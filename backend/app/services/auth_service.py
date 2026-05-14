@@ -103,7 +103,7 @@ class AuthService:
         token = create_access_token(subject=str(read_model.id), claims={"role": read_model.role.value, "phone": read_model.phone})
         return TokenResponse(access_token=token, user=read_model)
 
-    def _to_read_model(user: User) -> UserRead:
+    def _to_read_model(self, user: User) -> UserRead:
         return UserRead(
             id=user.id,
             name=user.name,

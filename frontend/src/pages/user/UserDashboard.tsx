@@ -1,12 +1,12 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Gift, MapPinned, MessageSquareWarning, Recycle, Truck } from 'lucide-react';
+import { Gift, LocateFixed, MapPinned, MessageSquareWarning, Recycle, Truck } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { EmptyState } from '../../components/EmptyState';
 import { StatCard } from '../../components/StatCard';
 import { TrackingMap } from '../../components/TrackingMap';
 import { api, buildTrackingSocketUrl } from '../../lib/api';
-import type { Complaint, Coordinates, DriverLocation, Pickup, PickupStatus, Reward, WasteType } from '../../lib/types';
+import type { Complaint, DriverLocation, Pickup, PickupStatus, Reward, WasteType } from '../../lib/types';
 import { useSessionStore } from '../../store/session';
 
 const activePickupStatuses: PickupStatus[] = ['assigned', 'in_progress'];
@@ -27,6 +27,8 @@ export function UserDashboard() {
   const [liveLocation, setLiveLocation] = useState<DriverLocation | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [trackedPickupId, setTrackedPickupId] = useState<number | null>(null);
+  const trackingPanelRef = useRef<HTMLElement | null>(null);
 
   const pickupsQuery = useQuery({
     queryKey: ['pickups', user?.id],
@@ -53,42 +55,68 @@ export function UserDashboard() {
     enabled: Boolean(user)
   });
 
-  const activePickup = useMemo(
-    () => pickupsQuery.data?.find((pickup) => activePickupStatuses.includes(pickup.status)) ?? pickupsQuery.data?.[0],
+  // Default tracked pickup: first active one, or first overall
+  const defaultTrackedPickup = useMemo(
+    () => pickupsQuery.data?.find((p) => activePickupStatuses.includes(p.status)) ?? pickupsQuery.data?.[0] ?? null,
     [pickupsQuery.data]
   );
-  const activePickupId = activePickup?.id;
+
+  const trackedPickup = useMemo(
+    () => pickupsQuery.data?.find((p) => p.id === trackedPickupId) ?? defaultTrackedPickup,
+    [pickupsQuery.data, trackedPickupId, defaultTrackedPickup]
+  );
+
+  useEffect(() => {
+    if (!trackedPickupId && defaultTrackedPickup) {
+      setTrackedPickupId(defaultTrackedPickup.id);
+    }
+  }, [defaultTrackedPickup, trackedPickupId]);
 
   const trackingQuery = useQuery({
-    queryKey: ['tracking', activePickup?.id],
+    queryKey: ['tracking', trackedPickup?.id],
     queryFn: async () => {
-      const response = await api.get<DriverLocation[]>(`/tracking/pickups/${activePickup?.id}/locations`);
+      const response = await api.get<DriverLocation[]>(`/tracking/pickups/${trackedPickup?.id}/locations`);
       return response.data;
     },
-    enabled: Boolean(activePickup)
+    enabled: Boolean(trackedPickup),
+    refetchInterval: 5000
   });
 
   useEffect(() => {
     setLiveLocation(null);
-    if (!activePickupId) {
-      return undefined;
+    if (!trackedPickup?.id) return undefined;
+    let socket: WebSocket;
+    let alive = true;
+
+    function connect() {
+      if (!alive) return;
+      socket = new WebSocket(buildTrackingSocketUrl(trackedPickup!.id));
+      socket.onopen = () => { try { socket.send('subscribe'); } catch { /* ignore */ } };
+      socket.onmessage = (event) => {
+        try {
+          const data = JSON.parse(event.data) as { type?: string; payload?: DriverLocation };
+          if (data.type === 'driver-location' && data.payload) {
+            setLiveLocation(data.payload);
+          }
+        } catch { /* ignore malformed frames */ }
+      };
+      socket.onclose = () => {
+        // Reconnect after 3 s if component is still mounted
+        if (alive) setTimeout(connect, 3000);
+      };
+      socket.onerror = () => socket.close();
     }
-    const socket = new WebSocket(buildTrackingSocketUrl(activePickupId));
-    socket.onmessage = (event) => {
-      const data = JSON.parse(event.data) as { type?: string; payload?: DriverLocation };
-      if (data.type === 'driver-location' && data.payload) {
-        setLiveLocation(data.payload);
-      }
+
+    connect();
+    return () => {
+      alive = false;
+      socket?.close();
     };
-    socket.onopen = () => socket.send('subscribe');
-    return () => socket.close();
-  }, [activePickupId]);
+  }, [trackedPickup?.id]);
 
   const createPickup = useMutation({
     mutationFn: async () => {
-      if (!user) {
-        return;
-      }
+      if (!user) return;
       setError(null);
       setMessage(null);
       await api.post('/pickups', {
@@ -122,7 +150,7 @@ export function UserDashboard() {
   const pickups = pickupsQuery.data ?? [];
   const latestDriverLocation = liveLocation ?? trackingQuery.data?.at(-1) ?? null;
   const rewardPoints = rewards.reduce((total, reward) => total + reward.points, 0);
-  const pickupLocation: Coordinates | null = activePickup?.coordinates ?? null;
+  const pickupLocation = trackedPickup?.coordinates ?? null;
 
   return (
     <section className="grid gap-6">
@@ -150,8 +178,35 @@ export function UserDashboard() {
             </select>
             <input className="rounded-2xl border border-slate-200 px-4 py-3" type="date" value={schedule.scheduled_date} onChange={(event) => setSchedule((current) => ({ ...current, scheduled_date: event.target.value }))} />
             <input className="rounded-2xl border border-slate-200 px-4 py-3" type="time" value={schedule.scheduled_time} onChange={(event) => setSchedule((current) => ({ ...current, scheduled_time: event.target.value }))} />
-            <input className="rounded-2xl border border-slate-200 px-4 py-3" placeholder="Latitude" value={schedule.latitude} onChange={(event) => setSchedule((current) => ({ ...current, latitude: event.target.value }))} />
-            <input className="rounded-2xl border border-slate-200 px-4 py-3" placeholder="Longitude" value={schedule.longitude} onChange={(event) => setSchedule((current) => ({ ...current, longitude: event.target.value }))} />
+            <div className="grid grid-cols-[1fr_1fr_auto] gap-2 sm:col-span-2">
+              <input className="rounded-2xl border border-slate-200 px-4 py-3" placeholder="Latitude" value={schedule.latitude} onChange={(event) => setSchedule((current) => ({ ...current, latitude: event.target.value }))} />
+              <input className="rounded-2xl border border-slate-200 px-4 py-3" placeholder="Longitude" value={schedule.longitude} onChange={(event) => setSchedule((current) => ({ ...current, longitude: event.target.value }))} />
+              <button
+                className="rounded-2xl bg-slate-200 px-4 py-3 font-bold text-slate-900 whitespace-nowrap"
+                type="button"
+                onClick={() => {
+                  const useFallbackCoords = () => {
+                    setSchedule((current) => ({ ...current, latitude: '28.613900', longitude: '77.209000' }));
+                    setError('GPS unavailable — fallback coordinates used (Delhi).');
+                  };
+                  if (!navigator.geolocation) { useFallbackCoords(); return; }
+                  navigator.geolocation.getCurrentPosition(
+                    (position) => {
+                      setSchedule((current) => ({
+                        ...current,
+                        latitude: position.coords.latitude.toFixed(6),
+                        longitude: position.coords.longitude.toFixed(6)
+                      }));
+                      setError(null);
+                    },
+                    () => useFallbackCoords(),
+                    { enableHighAccuracy: true, timeout: 5000 }
+                  );
+                }}
+              >
+                <LocateFixed className="mr-2 inline h-4 w-4" />Use my location
+              </button>
+            </div>
             <textarea className="rounded-2xl border border-slate-200 px-4 py-3 sm:col-span-2" placeholder="Pickup notes" rows={3} value={schedule.notes} onChange={(event) => setSchedule((current) => ({ ...current, notes: event.target.value }))} />
             <button className="rounded-2xl bg-emerald-600 px-5 py-3 font-bold text-white sm:col-span-2" disabled={createPickup.isPending}>
               Schedule
@@ -160,21 +215,38 @@ export function UserDashboard() {
           {message ? <p className="mt-4 rounded-2xl bg-emerald-50 px-4 py-3 text-sm text-emerald-700">{message}</p> : null}
           {error ? <p className="mt-4 rounded-2xl bg-rose-50 px-4 py-3 text-sm text-rose-700">{error}</p> : null}
         </article>
-        <article className="glass-card rounded-[2rem] p-6">
+        <article ref={trackingPanelRef} className="glass-card rounded-[2rem] p-6">
           <div className="flex items-center justify-between">
             <div>
               <h2 className="text-2xl font-black text-slate-950">Live route tracking</h2>
-              <p className="text-slate-600">OpenStreetMap live view for your active pickup.</p>
+              <p className="text-slate-600">OpenStreetMap live view — select a pickup to track its driver.</p>
             </div>
             <Recycle className="h-10 w-10 text-emerald-600" />
           </div>
-          <div className="mt-6">
+          {pickups.length > 0 ? (
+            <select
+              className="mt-4 w-full rounded-2xl border border-slate-200 px-4 py-3 text-sm font-semibold"
+              value={trackedPickupId ?? ''}
+              onChange={(event) => setTrackedPickupId(Number(event.target.value))}
+            >
+              {pickups.map((pickup) => (
+                <option key={pickup.id} value={pickup.id}>
+                  #{pickup.id} · {pickup.waste_type} · {pickup.status} · {pickup.scheduled_date}
+                </option>
+              ))}
+            </select>
+          ) : null}
+          <div className="mt-4">
             <TrackingMap
               pickupLocation={pickupLocation}
               driverLocation={latestDriverLocation ? { latitude: latestDriverLocation.latitude, longitude: latestDriverLocation.longitude } : null}
               history={(trackingQuery.data ?? []).map((item) => ({ latitude: item.latitude, longitude: item.longitude }))}
+              focusMode="driver"
             />
           </div>
+          {trackedPickup && !trackedPickup.coordinates ? (
+            <p className="mt-3 text-xs text-slate-500">No pickup coordinates set for this request. Ask the citizen to re-schedule with a location.</p>
+          ) : null}
         </article>
       </div>
       {pickups.length ? (
@@ -186,8 +258,18 @@ export function UserDashboard() {
                 <div>
                   <p className="font-bold text-slate-900">{pickup.waste_type} · {pickup.status}</p>
                   <p className="text-sm text-slate-600">{pickup.scheduled_date} at {pickup.scheduled_time}</p>
+                  <p className="text-sm text-slate-500">Driver: {pickup.driver_id ?? 'Auto-assignment pending'}</p>
                 </div>
-                <p className="text-sm text-slate-500">Driver: {pickup.driver_id ?? 'Auto-assignment pending'}</p>
+                <button
+                  className={`rounded-2xl px-5 py-2 text-sm font-bold ${trackedPickupId === pickup.id ? 'bg-emerald-600 text-white' : 'bg-slate-100 text-slate-800'}`}
+                  type="button"
+                  onClick={() => {
+                    setTrackedPickupId(pickup.id);
+                    trackingPanelRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                  }}
+                >
+                  <MapPinned className="mr-1 inline h-4 w-4" />{trackedPickupId === pickup.id ? 'Tracking' : 'Track'}
+                </button>
               </div>
             ))}
           </div>
@@ -205,12 +287,12 @@ export function UserDashboard() {
           e.preventDefault();
           const target = e.currentTarget;
           const phone = (target.elements.namedItem('phone') as HTMLInputElement).value;
-          const message = (target.elements.namedItem('message') as HTMLInputElement).value;
+          const msg = (target.elements.namedItem('message') as HTMLInputElement).value;
           try {
-            await api.post('/chat/send', { phone, message, user_id: user.id });
+            await api.post('/chat/send', { phone, message: msg, user_id: user.id });
             alert('SMS Message Sent successfully!');
             target.reset();
-          } catch (error) {
+          } catch {
             alert('Failed to send SMS message.');
           }
         }}>
@@ -223,3 +305,4 @@ export function UserDashboard() {
     </section>
   );
 }
+
