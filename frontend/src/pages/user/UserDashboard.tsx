@@ -186,9 +186,7 @@ export function UserDashboard() {
                 type="button"
                 onClick={() => {
                   setError(null);
-                  setMessage('Fetching your location...');
-                  setError(null);
-                    setMessage('Fetching your current GPS location...');
+                  setMessage('Fetching your current GPS location...');
 
                     if (!window.isSecureContext) {
                       setError('Location access requires HTTPS or localhost.');

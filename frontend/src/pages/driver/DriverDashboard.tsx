@@ -77,7 +77,7 @@ export function DriverDashboard() {
             setError(null);
           },
           (geoError) => setMessage(`GPS: ${geoError.message}. Using last known coordinates.`),
-          { enableHighAccuracy: false, maximumAge: 10000 }
+          { enableHighAccuracy: true, maximumAge: 5000, timeout: 15000 }
         );
       } else {
         setMessage('GPS unavailable. Auto-tracking will use the coordinates entered above.');
@@ -106,6 +106,8 @@ export function DriverDashboard() {
       };
     // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [trackingActive, selectedPickup?.id, user?.driver_id, status, note]);
+
+  const trackingQuery = useQuery({
     queryKey: ['driver-tracking', selectedPickup?.id],
     queryFn: async () => {
       const response = await api.get<DriverLocation[]>(`/tracking/pickups/${selectedPickup?.id}/locations`);
