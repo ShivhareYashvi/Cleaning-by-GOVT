@@ -21,13 +21,19 @@ _settings = get_settings()
 class AuthService:
     """Authentication service backed by the shared PostgreSQL database."""
 
+    def get_user_by_phone(self, session: Session, phone: str) -> User | None:
+        normalized_phone = normalize_phone(phone)
+        return session.scalar(select(User).where(User.phone == normalized_phone))
+
     def register(self, session: Session, payload: RegisterRequest) -> UserRead:
         phone = normalize_phone(payload.phone)
-        existing_by_phone = session.scalar(select(User).where(User.phone == phone))
+        existing_by_phone = self.get_user_by_phone(session, phone)
         if existing_by_phone is not None:
             raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Phone number is already registered")
-        if payload.email:
-            existing_by_email = session.scalar(select(User).where(User.email == payload.email))
+
+        email = payload.email.lower() if payload.email else None
+        if email:
+            existing_by_email = session.scalar(select(User).where(User.email == email))
             if existing_by_email is not None:
                 raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Email is already registered")
         # Skip OTP gate in local dev — enforce in staging/production only
@@ -40,7 +46,7 @@ class AuthService:
         user = User(
             name=payload.name,
             phone=phone,
-            email=payload.email,
+            email=email,
             password_hash=hash_password(payload.password),
             role=payload.role,
             address=payload.address,
