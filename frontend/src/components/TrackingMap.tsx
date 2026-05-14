@@ -11,7 +11,12 @@ type TrackingMapProps = {
 const DEFAULT_CENTER: [number, number] = [20.5937, 78.9629];
 
 function toTuple(coordinates: Coordinates): [number, number] {
-  return [coordinates.latitude, coordinates.longitude];
+  const latitude = Number(coordinates.latitude);
+  const longitude = Number(coordinates.longitude);
+  if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) {
+    return DEFAULT_CENTER;
+  }
+  return [latitude, longitude];
 }
 
 export function TrackingMap({

@@ -34,6 +34,10 @@ class OTPVerifyRequest(OTPRequest):
     code: str = Field(min_length=4, max_length=8)
 
 
+class ForgotPasswordResetRequest(OTPVerifyRequest):
+    new_password: str = Field(min_length=8, max_length=128)
+
+
 class OTPResponse(BaseModel):
     phone: str
     expires_in_seconds: int

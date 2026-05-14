@@ -7,6 +7,7 @@ from sqlalchemy import desc, select
 from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
+from app.core.phone import normalize_phone
 from app.core.security import hash_password, verify_password
 from app.models.otp_challenge import OTPChallenge
 
@@ -41,8 +42,8 @@ class OTPService:
         # Use Twilio Verify API
         import requests
         
-        # Ensure the phone number has a + prefix (assume India +91 if missing and 10 digits)
-        formatted_phone = phone if phone.startswith('+') else f"+91{phone[-10:]}"
+        normalized_phone = normalize_phone(phone)
+        formatted_phone = normalized_phone
         
         try:
             if not (settings.twilio_account_sid and settings.twilio_auth_token and settings.twilio_verify_service_sid):
@@ -68,7 +69,7 @@ class OTPService:
             delivery_channel = "sms-fallback"
 
         challenge = OTPChallenge(
-            phone=phone,
+            phone=normalized_phone,
             code_hash=hash_password(code),
             expires_at=expires_at,
             delivery_channel=delivery_channel,
@@ -91,8 +92,9 @@ class OTPService:
         if settings.environment == "local" and code == "1234":
             return True
 
+        normalized_phone = normalize_phone(phone)
         record = session.scalar(
-            select(OTPChallenge).where(OTPChallenge.phone == phone).order_by(desc(OTPChallenge.created_at)).limit(1)
+            select(OTPChallenge).where(OTPChallenge.phone == normalized_phone).order_by(desc(OTPChallenge.created_at)).limit(1)
         )
         if record is None or record.verified:
             return False
@@ -112,7 +114,7 @@ class OTPService:
             return True
             
         import requests
-        formatted_phone = phone if phone.startswith('+') else f"+91{phone[-10:]}"
+        formatted_phone = normalized_phone
         try:
             if not (settings.twilio_account_sid and settings.twilio_auth_token and settings.twilio_verify_service_sid):
                 raise RuntimeError(
@@ -139,8 +141,9 @@ class OTPService:
             return False
 
     def is_verified(self, session: Session, phone: str) -> bool:
+        normalized_phone = normalize_phone(phone)
         record = session.scalar(
-            select(OTPChallenge).where(OTPChallenge.phone == phone).order_by(desc(OTPChallenge.created_at)).limit(1)
+            select(OTPChallenge).where(OTPChallenge.phone == normalized_phone).order_by(desc(OTPChallenge.created_at)).limit(1)
         )
         return bool(record and record.verified)
 

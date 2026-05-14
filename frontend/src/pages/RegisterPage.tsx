@@ -34,14 +34,22 @@ export function RegisterPage() {
   const [otpCode, setOtpCode] = useState('');
   const [otpResponse, setOtpResponse] = useState<OTPResponse | null>(null);
   const [otpVerified, setOtpVerified] = useState(false);
+  const [verifiedPhone, setVerifiedPhone] = useState<string | null>(null);
+  const [showPassword, setShowPassword] = useState(false);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isBusy, setIsBusy] = useState(false);
 
-  const canRegister = useMemo(() => otpVerified && !isBusy, [isBusy, otpVerified]);
+  const canRegister = useMemo(() => otpVerified && !isBusy && verifiedPhone === form.phone, [form.phone, isBusy, otpVerified, verifiedPhone]);
 
   function updateField<K extends keyof RegisterForm>(field: K, value: RegisterForm[K]) {
     setForm((current) => ({ ...current, [field]: value }));
+    if (field === 'phone') {
+      setOtpVerified(false);
+      setVerifiedPhone(null);
+      setOtpResponse(null);
+      setOtpCode('');
+    }
   }
 
   async function uploadBillIfNeeded(): Promise<string | null> {
@@ -60,6 +68,8 @@ export function RegisterPage() {
   async function handleRequestOtp() {
     setErrorMessage(null);
     setStatusMessage(null);
+    setOtpVerified(false);
+    setVerifiedPhone(null);
     setIsBusy(true);
     try {
       const response = await api.post<OTPResponse>('/auth/otp/request', { phone: form.phone });
@@ -79,6 +89,7 @@ export function RegisterPage() {
     try {
       const response = await api.post<OTPResponse>('/auth/otp/verify', { phone: form.phone, code: otpCode });
       setOtpVerified(true);
+      setVerifiedPhone(form.phone);
       setStatusMessage(response.data.message);
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : 'OTP verification failed.');
@@ -130,9 +141,24 @@ export function RegisterPage() {
         <h1 className="mt-3 text-3xl font-black text-slate-950">Register for smart waste pickups</h1>
         <form className="mt-8 grid gap-4 sm:grid-cols-2" onSubmit={handleSubmit}>
           <input className="rounded-2xl border border-slate-200 px-4 py-3" placeholder="Full name" value={form.name} onChange={(event) => updateField('name', event.target.value)} />
-          <input className="rounded-2xl border border-slate-200 px-4 py-3" placeholder="Phone" value={form.phone} onChange={(event) => updateField('phone', event.target.value)} />
+          <input className="rounded-2xl border border-slate-200 px-4 py-3" type="tel" placeholder="9876543210" value={form.phone} onChange={(event) => updateField('phone', event.target.value)} />
           <input className="rounded-2xl border border-slate-200 px-4 py-3" placeholder="Email" value={form.email} onChange={(event) => updateField('email', event.target.value)} />
-          <input className="rounded-2xl border border-slate-200 px-4 py-3" type="password" placeholder="Password" value={form.password} onChange={(event) => updateField('password', event.target.value)} />
+          <div className="relative">
+            <input
+              className="w-full rounded-2xl border border-slate-200 px-4 py-3"
+              type={showPassword ? 'text' : 'password'}
+              placeholder="Password"
+              value={form.password}
+              onChange={(event) => updateField('password', event.target.value)}
+            />
+            <button
+              type="button"
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-semibold text-slate-500"
+              onClick={() => setShowPassword((current) => !current)}
+            >
+              {showPassword ? 'Hide' : 'Show'}
+            </button>
+          </div>
           <select className="rounded-2xl border border-slate-200 px-4 py-3" value={form.role} onChange={(event) => updateField('role', event.target.value as UserRole)}>
             <option value="citizen">Citizen</option>
             <option value="driver">Driver</option>
@@ -159,6 +185,9 @@ export function RegisterPage() {
                 Verify OTP
               </button>
             </div>
+            {verifiedPhone && verifiedPhone !== form.phone ? (
+              <p className="mt-2 text-xs text-rose-600">Phone changed after OTP verification. Request a new OTP for the updated number.</p>
+            ) : null}
           </div>
           <button className="rounded-2xl bg-cyan-600 px-5 py-3 font-bold text-white sm:col-span-2 disabled:opacity-60" type="submit" disabled={!canRegister}>
             Complete registration
