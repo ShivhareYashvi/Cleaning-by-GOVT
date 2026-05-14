@@ -287,7 +287,6 @@ export function UserDashboard() {
             <TrackingMap
               pickupLocation={pickupLocation}
               driverLocation={latestDriverLocation ? { latitude: latestDriverLocation.latitude, longitude: latestDriverLocation.longitude } : null}
-              history={(trackingQuery.data ?? []).map((item) => ({ latitude: item.latitude, longitude: item.longitude }))}
               focusMode="driver"
             />
           </div>

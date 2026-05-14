@@ -23,6 +23,7 @@ export function DriverDashboard() {
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const latRef = useRef('');
   const lngRef = useRef('');
+  const lastPostTimeRef = useRef<number>(0);
 
   const pickupsQuery = useQuery({
     queryKey: ['driver-pickups', user?.driver_id],
@@ -61,10 +62,29 @@ export function DriverDashboard() {
         intervalRef.current = null;
       }
 
-      if (!trackingActive) {
-        return;
-      }
-      if (!selectedPickup || !user?.driver_id) return;
+      if (!trackingActive || !selectedPickup || !user?.driver_id) return;
+
+      const pushLocation = async (lat: string, lng: string) => {
+        const now = Date.now();
+        if (now - lastPostTimeRef.current < 5000) return; // throttle: at most once per 5 s
+        lastPostTimeRef.current = now;
+        try {
+          await api.post(`/tracking/pickups/${selectedPickup.id}/locations`, {
+            driver_id: user.driver_id,
+            latitude: Number(lat),
+            longitude: Number(lng),
+            status,
+            note: note || null
+          });
+          await Promise.all([
+            queryClient.invalidateQueries({ queryKey: ['driver-tracking', selectedPickup.id] }),
+            queryClient.invalidateQueries({ queryKey: ['driver-pickups', user?.driver_id] })
+          ]);
+        } catch {
+          // silently ignore intermittent push failures
+        }
+      };
+
       if (navigator.geolocation) {
         watchIdRef.current = navigator.geolocation.watchPosition(
           (pos) => {
@@ -75,6 +95,7 @@ export function DriverDashboard() {
             latRef.current = lat;
             lngRef.current = lng;
             setError(null);
+            void pushLocation(lat, lng); // push immediately on every GPS fix
           },
           (geoError) => setMessage(`GPS: ${geoError.message}. Using last known coordinates.`),
           { enableHighAccuracy: true, maximumAge: 5000, timeout: 15000 }
@@ -82,24 +103,11 @@ export function DriverDashboard() {
       } else {
         setMessage('GPS unavailable. Auto-tracking will use the coordinates entered above.');
       }
-      intervalRef.current = setInterval(async () => {
-        if (!latRef.current || !lngRef.current) return;
-        try {
-          await api.post(`/tracking/pickups/${selectedPickup.id}/locations`, {
-            driver_id: user.driver_id,
-            latitude: Number(latRef.current),
-            longitude: Number(lngRef.current),
-            status,
-            note: note || null
-          });
-          await Promise.all([
-            queryClient.invalidateQueries({ queryKey: ['driver-tracking', selectedPickup.id] }),
-            queryClient.invalidateQueries({ queryKey: ['driver-pickups', user?.driver_id] })
-          ]);
-        } catch {
-          // silently ignore intermittent push failures during auto-track
-        }
-      }, 10000); // push every 10 seconds
+
+      // Keepalive: re-push every 15 s in case GPS position hasn't changed
+      intervalRef.current = setInterval(() => {
+        if (latRef.current && lngRef.current) void pushLocation(latRef.current, lngRef.current);
+      }, 15000);
       return () => {
         if (watchIdRef.current !== null) navigator.geolocation.clearWatch(watchIdRef.current);
         if (intervalRef.current !== null) clearInterval(intervalRef.current);
@@ -323,9 +331,7 @@ export function DriverDashboard() {
             <TrackingMap
               pickupLocation={selectedPickup?.coordinates ?? null}
               driverLocation={latestLocation ? { latitude: latestLocation.latitude, longitude: latestLocation.longitude } : null}
-              history={history.map((item) => ({ latitude: item.latitude, longitude: item.longitude }))}
               focusMode="both"
-              showHistory={false}
             />
           </div>
           {selectedPickup && !selectedPickup.coordinates ? (
