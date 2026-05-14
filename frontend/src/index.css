@@ -23,7 +23,3 @@ body {
   @apply border border-white/50 bg-white/70 shadow-glass backdrop-blur-xl;
 }
 
-.leaflet-container {
-  width: 100%;
-  height: 100%;
-}

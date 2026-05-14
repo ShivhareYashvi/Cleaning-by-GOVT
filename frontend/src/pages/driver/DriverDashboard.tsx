@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useRef, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { LocateFixed, MapPinned, Navigation, PackageCheck, Truck } from 'lucide-react';
 import { EmptyState } from '../../components/EmptyState';
@@ -18,6 +18,11 @@ export function DriverDashboard() {
   const [note, setNote] = useState('');
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [trackingActive, setTrackingActive] = useState(false);
+  const watchIdRef = useRef<number | null>(null);
+  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const latRef = useRef('');
+  const lngRef = useRef('');
 
   const pickupsQuery = useQuery({
     queryKey: ['driver-pickups', user?.driver_id],
@@ -39,6 +44,62 @@ export function DriverDashboard() {
       setStatus(pickupsQuery.data[0].status);
     }
   }, [pickupsQuery.data, selectedPickupId]);
+
+  // Keep refs in sync with state so the interval always reads current coords
+  useEffect(() => { latRef.current = latitude; }, [latitude]);
+  useEffect(() => { lngRef.current = longitude; }, [longitude]);
+
+  // Start/stop continuous GPS tracking
+  useEffect(() => {
+    if (!trackingActive) {
+      if (watchIdRef.current !== null) {
+        navigator.geolocation.clearWatch(watchIdRef.current);
+        watchIdRef.current = null;
+      }
+      if (intervalRef.current !== null) {
+        clearInterval(intervalRef.current);
+        intervalRef.current = null;
+      }
+      return;
+    }
+    if (!selectedPickup || !user?.driver_id) return;
+    if (navigator.geolocation) {
+      watchIdRef.current = navigator.geolocation.watchPosition(
+        (pos) => {
+          setLatitude(pos.coords.latitude.toFixed(6));
+          setLongitude(pos.coords.longitude.toFixed(6));
+          setError(null);
+        },
+        (geoError) => setMessage(`GPS: ${geoError.message}. Using last known coordinates.`),
+        { enableHighAccuracy: false, maximumAge: 10000 }
+      );
+    } else {
+      setMessage('GPS unavailable. Auto-tracking will use the coordinates entered above.');
+    }
+    intervalRef.current = setInterval(async () => {
+      if (!latRef.current || !lngRef.current) return;
+      try {
+        await api.post(`/tracking/pickups/${selectedPickup.id}/locations`, {
+          driver_id: user.driver_id,
+          latitude: Number(latRef.current),
+          longitude: Number(lngRef.current),
+          status,
+          note: note || null
+        });
+        await Promise.all([
+          queryClient.invalidateQueries({ queryKey: ['driver-tracking', selectedPickup.id] }),
+          queryClient.invalidateQueries({ queryKey: ['driver-pickups', user?.driver_id] })
+        ]);
+      } catch {
+        // silently ignore intermittent push failures during auto-track
+      }
+    }, 10000); // push every 10 seconds
+    return () => {
+      if (watchIdRef.current !== null) navigator.geolocation.clearWatch(watchIdRef.current);
+      if (intervalRef.current !== null) clearInterval(intervalRef.current);
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [trackingActive, selectedPickup?.id]);
 
   const trackingQuery = useQuery({
     queryKey: ['driver-tracking', selectedPickup?.id],
@@ -153,10 +214,21 @@ export function DriverDashboard() {
                   className="rounded-2xl bg-slate-200 px-5 py-3 font-bold text-slate-900"
                   type="button"
                   onClick={() => {
-                    navigator.geolocation.getCurrentPosition((position) => {
-                      setLatitude(position.coords.latitude.toFixed(6));
-                      setLongitude(position.coords.longitude.toFixed(6));
-                    });
+                    const useFallbackCoords = () => {
+                      setLatitude('28.613900');
+                      setLongitude('77.209000');
+                      setError('GPS unavailable — fallback coordinates used (Delhi).');
+                    };
+                    if (!navigator.geolocation) { useFallbackCoords(); return; }
+                    navigator.geolocation.getCurrentPosition(
+                      (position) => {
+                        setLatitude(position.coords.latitude.toFixed(6));
+                        setLongitude(position.coords.longitude.toFixed(6));
+                        setError(null);
+                      },
+                      () => useFallbackCoords(),
+                      { enableHighAccuracy: true, timeout: 5000 }
+                    );
                   }}
                 >
                   <LocateFixed className="mr-2 inline h-4 w-4" />Use my location
@@ -164,13 +236,26 @@ export function DriverDashboard() {
               </div>
               <textarea className="rounded-2xl border border-slate-200 px-4 py-3" rows={3} placeholder="Status note" value={note} onChange={(event) => setNote(event.target.value)} />
               <div className="grid gap-3 md:grid-cols-2">
-                <button className="rounded-2xl bg-emerald-600 px-5 py-3 font-bold text-white" type="button" onClick={() => void sendLocation.mutateAsync()}>
-                  Send live update
+                <button
+                  className={`rounded-2xl px-5 py-3 font-bold text-white ${trackingActive ? 'bg-rose-600' : 'bg-emerald-600'}`}
+                  type="button"
+                  onClick={() => {
+                    setTrackingActive((prev) => {
+                      if (!prev) setMessage('Auto-tracking started. Location is pushed every 10 s.');
+                      else setMessage('Auto-tracking stopped.');
+                      return !prev;
+                    });
+                  }}
+                >
+                  {trackingActive ? 'Stop auto-tracking' : 'Start auto-tracking'}
                 </button>
-                <button className="rounded-2xl bg-slate-950 px-5 py-3 font-bold text-white" type="button" onClick={() => void updateStatus.mutateAsync(status)}>
-                  Save status
+                <button className="rounded-2xl bg-slate-200 px-5 py-3 font-bold text-slate-900" type="button" onClick={() => void sendLocation.mutateAsync()}>
+                  Send once
                 </button>
               </div>
+              <button className="rounded-2xl bg-slate-950 px-5 py-3 font-bold text-white" type="button" onClick={() => void updateStatus.mutateAsync(status)}>
+                Save status
+              </button>
             </div>
           ) : null}
           {message ? <p className="mt-4 rounded-2xl bg-emerald-50 px-4 py-3 text-sm text-emerald-700">{message}</p> : null}
@@ -184,8 +269,15 @@ export function DriverDashboard() {
               pickupLocation={selectedPickup?.coordinates ?? null}
               driverLocation={latestLocation ? { latitude: latestLocation.latitude, longitude: latestLocation.longitude } : null}
               history={history.map((item) => ({ latitude: item.latitude, longitude: item.longitude }))}
+              focusMode="both"
+              showHistory={false}
             />
           </div>
+          {selectedPickup && !selectedPickup.coordinates ? (
+            <p className="mt-3 rounded-2xl bg-amber-50 px-4 py-3 text-xs font-semibold text-amber-900">
+              Pickup coordinates are missing for this request. Ask the citizen to schedule with location so routing can lock onto the waste pickup point.
+            </p>
+          ) : null}
         </article>
       </div>
     </section>
