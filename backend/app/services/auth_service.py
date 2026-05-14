@@ -22,17 +22,22 @@ _settings = get_settings()
 class AuthService:
     """Authentication service backed by the shared PostgreSQL database."""
 
-    def _phone_lookup_candidates(self, phone: str) -> tuple[str, ...]:
+    def get_user_by_phone(self, session: Session, phone: str) -> User | None:
+        """Look up a user by phone number, supporting multiple phone formats for backward compatibility."""
         normalized_phone = normalize_phone(phone)
+        # First try exact normalized match
+        user = session.scalar(select(User).where(User.phone == normalized_phone))
+        if user:
+            return user
+        
+        # For backward compatibility: try to find users with raw formats and update them
         digits = re.sub(r"\D", "", normalized_phone)
         if digits.startswith("91"):
             digits = digits[2:]
-        candidates = {normalized_phone, digits, f"0{digits}", f"91{digits}"}
-        return tuple(sorted(candidate for candidate in candidates if candidate))
-
-    def get_user_by_phone(self, session: Session, phone: str) -> User | None:
-        candidates = self._phone_lookup_candidates(phone)
-        return session.scalar(select(User).where(User.phone.in_(candidates)))
+        
+        # Search for users with alternative formats (old database entries)
+        alternative_formats = [digits, f"0{digits}", f"91{digits}"]
+        return session.scalar(select(User).where(User.phone.in_(alternative_formats)))
 
     def register(self, session: Session, payload: RegisterRequest) -> UserRead:
         phone = normalize_phone(payload.phone)
@@ -87,11 +92,13 @@ class AuthService:
         return self._to_read_model(persisted)
 
     def login(self, session: Session, payload: LoginRequest) -> TokenResponse:
-        user = session.scalar(
-            select(User).options(selectinload(User.driver_profile)).where(User.phone.in_(self._phone_lookup_candidates(payload.phone)))
-        )
+        user = self.get_user_by_phone(session, payload.phone)
         if user is None or not verify_password(payload.password, str(user.password_hash)):
             raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid phone or password")
+        # Ensure user is loaded with driver_profile
+        user = session.scalar(
+            select(User).options(selectinload(User.driver_profile)).where(User.id == user.id)
+        )
         read_model = self._to_read_model(user)
         token = create_access_token(subject=str(read_model.id), claims={"role": read_model.role.value, "phone": read_model.phone})
         return TokenResponse(access_token=token, user=read_model)
@@ -108,11 +115,13 @@ class AuthService:
         if not otp_service.verify_code(session, normalized_phone, code):
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid or expired OTP")
         self.mark_phone_verified(session, normalized_phone)
-        user = session.scalar(
-            select(User).options(selectinload(User.driver_profile)).where(User.phone.in_(self._phone_lookup_candidates(normalized_phone)))
-        )
+        user = self.get_user_by_phone(session, normalized_phone)
         if user is None:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+        # Ensure user is loaded with driver_profile
+        user = session.scalar(
+            select(User).options(selectinload(User.driver_profile)).where(User.id == user.id)
+        )
         user.password_hash = hash_password(new_password)
         user.updated_at = datetime.now(timezone.utc)
         session.commit()
