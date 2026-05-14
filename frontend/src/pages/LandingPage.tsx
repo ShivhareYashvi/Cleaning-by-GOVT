@@ -24,31 +24,35 @@ export function LandingPage() {
           </Link>
           <Link className="hidden rounded-full bg-white px-5 py-2 text-sm font-semibold text-slate-900 transition hover:bg-civic-mint sm:inline-flex" to="/login">
             Login
-            <h1 className="max-w-4xl text-5xl font-black tracking-tight sm:text-6xl lg:text-7xl">
-              Cleaner neighborhoods with intelligent pickup coordination.
-            </h1>
-            <p className="mt-6 max-w-2xl text-lg leading-8 text-cyan-50/90">
-              EcoSync connects citizens, drivers, and municipal administrators with verified households, pickup scheduling, complaints, rewards, route visibility, and analytics.
-            </p>
-            <div className="mt-8 grid gap-3 sm:grid-cols-2">
-              <Link className="inline-flex items-center justify-center gap-2 rounded-full bg-slate-950 px-6 py-3 font-semibold text-white shadow-xl transition hover:-translate-y-0.5" to="/register">
-                Register household <ArrowRight className="h-5 w-5" />
+          </Link>
+        </nav>
+
+        <div className="mx-auto mt-14 max-w-4xl">
+          <h1 className="max-w-4xl text-5xl font-black tracking-tight sm:text-6xl lg:text-7xl">
+            Cleaner neighborhoods with intelligent pickup coordination.
+          </h1>
+          <p className="mt-6 max-w-2xl text-lg leading-8 text-cyan-50/90">
+            EcoSync connects citizens, drivers, and municipal administrators with verified households, pickup scheduling, complaints, rewards, route visibility, and analytics.
+          </p>
+          <div className="mt-8 grid gap-3 sm:grid-cols-2">
+            <Link className="inline-flex items-center justify-center gap-2 rounded-full bg-slate-950 px-6 py-3 font-semibold text-white shadow-xl transition hover:-translate-y-0.5" to="/register">
+              Register household <ArrowRight className="h-5 w-5" />
+            </Link>
+            <div className="grid gap-3">
+              <Link className="inline-flex items-center justify-center rounded-full border border-white/40 bg-white/15 px-6 py-3 font-semibold text-white backdrop-blur transition hover:bg-white/25" to="/login/citizen">
+                Citizen login
               </Link>
-              <div className="grid gap-3">
-                <Link className="inline-flex items-center justify-center rounded-full border border-white/40 bg-white/15 px-6 py-3 font-semibold text-white backdrop-blur transition hover:bg-white/25" to="/login/citizen">
-                  Citizen login
-                </Link>
-                <Link className="inline-flex items-center justify-center rounded-full border border-white/40 bg-white/15 px-6 py-3 font-semibold text-white backdrop-blur transition hover:bg-white/25" to="/login/driver">
-                  Driver login
-                </Link>
-                <Link className="inline-flex items-center justify-center rounded-full border border-white/40 bg-white/15 px-6 py-3 font-semibold text-white backdrop-blur transition hover:bg-white/25" to="/login/admin">
-                  Municipal login
-                </Link>
-              </div>
+              <Link className="inline-flex items-center justify-center rounded-full border border-white/40 bg-white/15 px-6 py-3 font-semibold text-white backdrop-blur transition hover:bg-white/25" to="/login/driver">
+                Driver login
+              </Link>
+              <Link className="inline-flex items-center justify-center rounded-full border border-white/40 bg-white/15 px-6 py-3 font-semibold text-white backdrop-blur transition hover:bg-white/25" to="/login/admin">
+                Municipal login
+              </Link>
             </div>
           </div>
+        </div>
 
-          <div className="glass-card rounded-[2rem] p-6 text-slate-900">
+        <div className="glass-card rounded-[2rem] p-6 text-slate-900">
             <div className="rounded-[1.5rem] bg-slate-950 p-5 text-white">
               <div className="mb-6 flex items-center justify-between">
                 <div>
@@ -72,7 +76,6 @@ export function LandingPage() {
               ))}
             </div>
           </div>
-        </div>
       </section>
     </main>
   );
