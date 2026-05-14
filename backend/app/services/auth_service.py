@@ -6,6 +6,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, selectinload
 
 from app.core.config import get_settings
+from app.core.phone import normalize_phone
 from app.core.security import create_access_token, hash_password, verify_password
 from app.models.driver import Driver
 from app.models.enums import DriverAvailability, UserRole
@@ -21,7 +22,8 @@ class AuthService:
     """Authentication service backed by the shared PostgreSQL database."""
 
     def register(self, session: Session, payload: RegisterRequest) -> UserRead:
-        existing_by_phone = session.scalar(select(User).where(User.phone == payload.phone))
+        phone = normalize_phone(payload.phone)
+        existing_by_phone = session.scalar(select(User).where(User.phone == phone))
         if existing_by_phone is not None:
             raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Phone number is already registered")
         if payload.email:
@@ -29,7 +31,7 @@ class AuthService:
             if existing_by_email is not None:
                 raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Email is already registered")
         # Skip OTP gate in local dev — enforce in staging/production only
-        if _settings.environment != "local" and not otp_service.is_verified(session, payload.phone):
+        if _settings.environment != "local" and not otp_service.is_verified(session, phone):
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Phone number must be OTP verified before registration")
         if payload.role == UserRole.DRIVER and not payload.vehicle_number:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Driver registrations require a vehicle number")
@@ -37,7 +39,7 @@ class AuthService:
         now = datetime.now(timezone.utc)
         user = User(
             name=payload.name,
-            phone=payload.phone,
+            phone=phone,
             email=payload.email,
             password_hash=hash_password(payload.password),
             role=payload.role,
@@ -70,7 +72,8 @@ class AuthService:
         return self._to_read_model(persisted)
 
     def login(self, session: Session, payload: LoginRequest) -> TokenResponse:
-        user = session.scalar(select(User).options(selectinload(User.driver_profile)).where(User.phone == payload.phone))
+        phone = normalize_phone(payload.phone)
+        user = session.scalar(select(User).options(selectinload(User.driver_profile)).where(User.phone == phone))
         if user is None or not verify_password(payload.password, str(user.password_hash)):
             raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid phone or password")
         read_model = self._to_read_model(user)
@@ -78,13 +81,28 @@ class AuthService:
         return TokenResponse(access_token=token, user=read_model)
 
     def mark_phone_verified(self, session: Session, phone: str) -> None:
+        phone = normalize_phone(phone)
         user = session.scalar(select(User).where(User.phone == phone))
         if user is not None:
             user.verified = True
             user.updated_at = datetime.now(timezone.utc)
             session.flush()
 
-    @staticmethod
+    def reset_password(self, session: Session, phone: str, code: str, new_password: str) -> TokenResponse:
+        phone = normalize_phone(phone)
+        if not otp_service.verify_code(session, phone, code):
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid or expired OTP")
+        self.mark_phone_verified(session, phone)
+        user = session.scalar(select(User).options(selectinload(User.driver_profile)).where(User.phone == phone))
+        if user is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+        user.password_hash = hash_password(new_password)
+        user.updated_at = datetime.now(timezone.utc)
+        session.commit()
+        read_model = self._to_read_model(user)
+        token = create_access_token(subject=str(read_model.id), claims={"role": read_model.role.value, "phone": read_model.phone})
+        return TokenResponse(access_token=token, user=read_model)
+
     def _to_read_model(user: User) -> UserRead:
         return UserRead(
             id=user.id,

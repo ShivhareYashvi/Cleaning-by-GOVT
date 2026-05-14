@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.db import get_db
-from app.schemas.auth import LoginRequest, OTPRequest, OTPResponse, OTPVerifyRequest, RegisterRequest, TokenResponse
+from app.schemas.auth import ForgotPasswordResetRequest, LoginRequest, OTPRequest, OTPResponse, OTPVerifyRequest, RegisterRequest, TokenResponse
 from app.schemas.user import UserRead
 from app.services.auth_service import auth_service
 from app.services.otp_service import otp_service
@@ -33,6 +33,16 @@ def verify_otp(payload: OTPVerifyRequest, session: Session = Depends(get_db)) ->
     auth_service.mark_phone_verified(session, payload.phone)
     session.commit()
     return OTPResponse(phone=payload.phone, expires_in_seconds=0, message="Phone number verified")
+
+
+@router.post("/forgot-password", response_model=OTPResponse)
+def forgot_password(payload: OTPRequest, session: Session = Depends(get_db)) -> OTPResponse:
+    return request_otp(payload, session)
+
+
+@router.post("/forgot-password/reset", response_model=TokenResponse)
+def reset_password(payload: ForgotPasswordResetRequest, session: Session = Depends(get_db)) -> TokenResponse:
+    return auth_service.reset_password(session, payload.phone, payload.code, payload.new_password)
 
 
 @router.post("/register", response_model=UserRead, status_code=status.HTTP_201_CREATED)
