@@ -1,3 +1,4 @@
+import re
 from datetime import datetime, timezone
 
 from fastapi import HTTPException, status
@@ -21,9 +22,17 @@ _settings = get_settings()
 class AuthService:
     """Authentication service backed by the shared PostgreSQL database."""
 
-    def get_user_by_phone(self, session: Session, phone: str) -> User | None:
+    def _phone_lookup_candidates(self, phone: str) -> tuple[str, ...]:
         normalized_phone = normalize_phone(phone)
-        return session.scalar(select(User).where(User.phone == normalized_phone))
+        digits = re.sub(r"\D", "", normalized_phone)
+        if digits.startswith("91"):
+            digits = digits[2:]
+        candidates = {normalized_phone, digits, f"0{digits}", f"91{digits}"}
+        return tuple(sorted(candidate for candidate in candidates if candidate))
+
+    def get_user_by_phone(self, session: Session, phone: str) -> User | None:
+        candidates = self._phone_lookup_candidates(phone)
+        return session.scalar(select(User).where(User.phone.in_(candidates)))
 
     def register(self, session: Session, payload: RegisterRequest) -> UserRead:
         phone = normalize_phone(payload.phone)
@@ -78,8 +87,9 @@ class AuthService:
         return self._to_read_model(persisted)
 
     def login(self, session: Session, payload: LoginRequest) -> TokenResponse:
-        phone = normalize_phone(payload.phone)
-        user = session.scalar(select(User).options(selectinload(User.driver_profile)).where(User.phone == phone))
+        user = session.scalar(
+            select(User).options(selectinload(User.driver_profile)).where(User.phone.in_(self._phone_lookup_candidates(payload.phone)))
+        )
         if user is None or not verify_password(payload.password, str(user.password_hash)):
             raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid phone or password")
         read_model = self._to_read_model(user)
@@ -87,19 +97,20 @@ class AuthService:
         return TokenResponse(access_token=token, user=read_model)
 
     def mark_phone_verified(self, session: Session, phone: str) -> None:
-        phone = normalize_phone(phone)
-        user = session.scalar(select(User).where(User.phone == phone))
+        user = self.get_user_by_phone(session, phone)
         if user is not None:
             user.verified = True
             user.updated_at = datetime.now(timezone.utc)
             session.flush()
 
     def reset_password(self, session: Session, phone: str, code: str, new_password: str) -> TokenResponse:
-        phone = normalize_phone(phone)
-        if not otp_service.verify_code(session, phone, code):
+        normalized_phone = normalize_phone(phone)
+        if not otp_service.verify_code(session, normalized_phone, code):
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid or expired OTP")
-        self.mark_phone_verified(session, phone)
-        user = session.scalar(select(User).options(selectinload(User.driver_profile)).where(User.phone == phone))
+        self.mark_phone_verified(session, normalized_phone)
+        user = session.scalar(
+            select(User).options(selectinload(User.driver_profile)).where(User.phone.in_(self._phone_lookup_candidates(normalized_phone)))
+        )
         if user is None:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
         user.password_hash = hash_password(new_password)
