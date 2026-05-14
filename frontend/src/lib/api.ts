@@ -5,7 +5,7 @@ import { getSessionToken } from '../store/session';
 const apiUrl = '/api/v1';
 
 export const API_BASE_URL = apiUrl;
-export const API_ORIGIN = typeof window !== 'undefined' ? window.location.origin : 'http://localhost:5173';
+export const API_ORIGIN = typeof window !== 'undefined' ? window.location.origin : 'http://localhost:8000';
 
 export const api = axios.create({
   baseURL: apiUrl

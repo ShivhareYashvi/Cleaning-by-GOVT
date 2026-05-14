@@ -13,7 +13,7 @@ services:
       - key: JWT_SECRET_KEY
         generateValue: true
       - key: FRONTEND_ORIGIN
-        value: https://cleaning-by-govt-f3na.vercel.app
+        value: https://cleaning-by-govt.vercel.app
       - key: TWILIO_ACCOUNT_SID
         sync: false
       - key: TWILIO_AUTH_TOKEN
