@@ -51,7 +51,7 @@ export function DriverDashboard() {
 
   // Start/stop continuous GPS tracking
   useEffect(() => {
-    if (!trackingActive) {
+      // Always clear existing watches/intervals first
       if (watchIdRef.current !== null) {
         navigator.geolocation.clearWatch(watchIdRef.current);
         watchIdRef.current = null;
@@ -60,46 +60,52 @@ export function DriverDashboard() {
         clearInterval(intervalRef.current);
         intervalRef.current = null;
       }
-      return;
-    }
-    if (!selectedPickup || !user?.driver_id) return;
-    if (navigator.geolocation) {
-      watchIdRef.current = navigator.geolocation.watchPosition(
-        (pos) => {
-          setLatitude(pos.coords.latitude.toFixed(6));
-          setLongitude(pos.coords.longitude.toFixed(6));
-          setError(null);
-        },
-        (geoError) => setMessage(`GPS: ${geoError.message}. Using last known coordinates.`),
-        { enableHighAccuracy: false, maximumAge: 10000 }
-      );
-    } else {
-      setMessage('GPS unavailable. Auto-tracking will use the coordinates entered above.');
-    }
-    intervalRef.current = setInterval(async () => {
-      if (!latRef.current || !lngRef.current) return;
-      try {
-        await api.post(`/tracking/pickups/${selectedPickup.id}/locations`, {
-          driver_id: user.driver_id,
-          latitude: Number(latRef.current),
-          longitude: Number(lngRef.current),
-          status,
-          note: note || null
-        });
-        await Promise.all([
-          queryClient.invalidateQueries({ queryKey: ['driver-tracking', selectedPickup.id] }),
-          queryClient.invalidateQueries({ queryKey: ['driver-pickups', user?.driver_id] })
-        ]);
-      } catch {
-        // silently ignore intermittent push failures during auto-track
+
+      if (!trackingActive) {
+        return;
       }
-    }, 10000); // push every 10 seconds
-    return () => {
-      if (watchIdRef.current !== null) navigator.geolocation.clearWatch(watchIdRef.current);
-      if (intervalRef.current !== null) clearInterval(intervalRef.current);
-    };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [trackingActive, selectedPickup?.id]);
+      if (!selectedPickup || !user?.driver_id) return;
+      if (navigator.geolocation) {
+        watchIdRef.current = navigator.geolocation.watchPosition(
+          (pos) => {
+            const lat = pos.coords.latitude.toFixed(6);
+            const lng = pos.coords.longitude.toFixed(6);
+            setLatitude(lat);
+            setLongitude(lng);
+            latRef.current = lat;
+            lngRef.current = lng;
+            setError(null);
+          },
+          (geoError) => setMessage(`GPS: ${geoError.message}. Using last known coordinates.`),
+          { enableHighAccuracy: true, maximumAge: 5000, timeout: 15000 }
+        );
+      } else {
+        setMessage('GPS unavailable. Auto-tracking will use the coordinates entered above.');
+      }
+      intervalRef.current = setInterval(async () => {
+        if (!latRef.current || !lngRef.current) return;
+        try {
+          await api.post(`/tracking/pickups/${selectedPickup.id}/locations`, {
+            driver_id: user.driver_id,
+            latitude: Number(latRef.current),
+            longitude: Number(lngRef.current),
+            status,
+            note: note || null
+          });
+          await Promise.all([
+            queryClient.invalidateQueries({ queryKey: ['driver-tracking', selectedPickup.id] }),
+            queryClient.invalidateQueries({ queryKey: ['driver-pickups', user?.driver_id] })
+          ]);
+        } catch {
+          // silently ignore intermittent push failures during auto-track
+        }
+      }, 10000); // push every 10 seconds
+      return () => {
+        if (watchIdRef.current !== null) navigator.geolocation.clearWatch(watchIdRef.current);
+        if (intervalRef.current !== null) clearInterval(intervalRef.current);
+      };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [trackingActive, selectedPickup?.id, user?.driver_id, status, note]);
 
   const trackingQuery = useQuery({
     queryKey: ['driver-tracking', selectedPickup?.id],
@@ -214,20 +220,69 @@ export function DriverDashboard() {
                   className="rounded-2xl bg-slate-200 px-5 py-3 font-bold text-slate-900"
                   type="button"
                   onClick={() => {
-                    const useFallbackCoords = () => {
-                      setLatitude('28.613900');
-                      setLongitude('77.209000');
-                      setError('GPS unavailable — fallback coordinates used (Delhi).');
-                    };
-                    if (!navigator.geolocation) { useFallbackCoords(); return; }
+                    setError(null);
+                    setMessage('Fetching your current GPS location...');
+
+                    if (!window.isSecureContext) {
+                      setError('Location access requires HTTPS or localhost.');
+                      setMessage(null);
+                      return;
+                    }
+
+                    if (!navigator.geolocation) {
+                      setError('Geolocation is not supported in this browser.');
+                      setMessage(null);
+                      return;
+                    }
+
                     navigator.geolocation.getCurrentPosition(
                       (position) => {
-                        setLatitude(position.coords.latitude.toFixed(6));
-                        setLongitude(position.coords.longitude.toFixed(6));
+                        const lat = position.coords.latitude.toFixed(6);
+                        const lng = position.coords.longitude.toFixed(6);
+
+                        if (
+                          !lat ||
+                          !lng ||
+                          Number.isNaN(Number(lat)) ||
+                          Number.isNaN(Number(lng))
+                        ) {
+                          setError('Invalid GPS coordinates received.');
+                          setMessage(null);
+                          return;
+                        }
+
+                        setLatitude(lat);
+                        setLongitude(lng);
+
+                        latRef.current = lat;
+                        lngRef.current = lng;
+
                         setError(null);
+                        setMessage('Location captured successfully.');
                       },
-                      () => useFallbackCoords(),
-                      { enableHighAccuracy: true, timeout: 5000 }
+                      (geoError) => {
+                        let msg = 'Unable to fetch your current location.';
+
+                        switch (geoError.code) {
+                          case geoError.PERMISSION_DENIED:
+                            msg = 'Location permission denied. Please allow GPS access.';
+                            break;
+                          case geoError.POSITION_UNAVAILABLE:
+                            msg = 'GPS signal unavailable. Try moving outdoors.';
+                            break;
+                          case geoError.TIMEOUT:
+                            msg = 'Location request timed out. Try again.';
+                            break;
+                        }
+
+                        setError(msg);
+                        setMessage(null);
+                      },
+                      {
+                        enableHighAccuracy: true,
+                        timeout: 15000,
+                        maximumAge: 10000
+                      }
                     );
                   }}
                 >

@@ -50,7 +50,7 @@ function MapUpdater({
       if (pickup[0] === driver[0] && pickup[1] === driver[1]) {
         map.setView(driver, map.getZoom());
       } else {
-        map.fitBounds(bounds, { padding: [70, 70], maxZoom: 16 });
+        map.fitBounds(bounds, { padding: [70, 70], maxZoom: 16, animate: true });
       }
       return;
     }
@@ -68,8 +68,7 @@ function MapUpdater({
     if (pickup) {
       map.setView(pickup, map.getZoom());
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pickupLocation, driverLocation, focusMode]);
+  }, [map, pickupLocation, driverLocation, focusMode]);
 
   return null;
 }
