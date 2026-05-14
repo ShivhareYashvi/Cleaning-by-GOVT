@@ -185,23 +185,72 @@ export function UserDashboard() {
                 className="rounded-2xl bg-slate-200 px-4 py-3 font-bold text-slate-900 whitespace-nowrap"
                 type="button"
                 onClick={() => {
-                  const useFallbackCoords = () => {
-                    setSchedule((current) => ({ ...current, latitude: '28.613900', longitude: '77.209000' }));
-                    setError('GPS unavailable — fallback coordinates used (Delhi).');
-                  };
-                  if (!navigator.geolocation) { useFallbackCoords(); return; }
-                  navigator.geolocation.getCurrentPosition(
-                    (position) => {
-                      setSchedule((current) => ({
-                        ...current,
-                        latitude: position.coords.latitude.toFixed(6),
-                        longitude: position.coords.longitude.toFixed(6)
-                      }));
-                      setError(null);
-                    },
-                    () => useFallbackCoords(),
-                    { enableHighAccuracy: true, timeout: 5000 }
-                  );
+                  setError(null);
+                  setMessage('Fetching your location...');
+                  setError(null);
+                    setMessage('Fetching your current GPS location...');
+
+                    if (!window.isSecureContext) {
+                      setError('Location access requires HTTPS or localhost.');
+                      setMessage(null);
+                      return;
+                    }
+
+                    if (!navigator.geolocation) {
+                      setError('Geolocation is not supported in this browser.');
+                      setMessage(null);
+                      return;
+                    }
+
+                    navigator.geolocation.getCurrentPosition(
+                      (position) => {
+                        const latitude = position.coords.latitude.toFixed(6);
+                        const longitude = position.coords.longitude.toFixed(6);
+
+                        if (
+                          !latitude ||
+                          !longitude ||
+                          Number.isNaN(Number(latitude)) ||
+                          Number.isNaN(Number(longitude))
+                        ) {
+                          setError('Invalid GPS coordinates received.');
+                          setMessage(null);
+                          return;
+                        }
+
+                        setSchedule((current) => ({
+                          ...current,
+                          latitude,
+                          longitude
+                        }));
+
+                        setError(null);
+                        setMessage('Location captured successfully.');
+                      },
+                      (geoError) => {
+                        let msg = 'Unable to fetch your current location.';
+
+                        switch (geoError.code) {
+                          case geoError.PERMISSION_DENIED:
+                            msg = 'Location permission denied. Please allow GPS access.';
+                            break;
+                          case geoError.POSITION_UNAVAILABLE:
+                            msg = 'GPS signal unavailable. Try moving outdoors.';
+                            break;
+                          case geoError.TIMEOUT:
+                            msg = 'Location request timed out. Try again.';
+                            break;
+                        }
+
+                        setError(msg);
+                        setMessage(null);
+                      },
+                      {
+                        enableHighAccuracy: true,
+                        timeout: 15000,
+                        maximumAge: 10000
+                      }
+                    )
                 }}
               >
                 <LocateFixed className="mr-2 inline h-4 w-4" />Use my location
