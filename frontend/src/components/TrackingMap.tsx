@@ -6,10 +6,8 @@ import type { Coordinates } from '../lib/types';
 type TrackingMapProps = {
   pickupLocation?: Coordinates | null;
   driverLocation?: Coordinates | null;
-  history?: Coordinates[];
   heightClassName?: string;
   focusMode?: 'driver' | 'pickup' | 'both';
-  showHistory?: boolean;
 };
 
 const DEFAULT_CENTER: [number, number] = [20.5937, 78.9629];
@@ -76,13 +74,10 @@ function MapUpdater({
 export function TrackingMap({
   pickupLocation,
   driverLocation,
-  history = [],
   heightClassName = 'h-80',
-  focusMode = 'driver',
-  showHistory = true
+  focusMode = 'driver'
 }: TrackingMapProps) {
   const center = driverLocation ? toTuple(driverLocation) : pickupLocation ? toTuple(pickupLocation) : DEFAULT_CENTER;
-  const path = history.map(toTuple);
   const [routedPath, setRoutedPath] = useState<[number, number][]>([]);
 
   const routeQuery = useMemo(() => {
@@ -169,7 +164,6 @@ export function TrackingMap({
         ) : null}
         {routedPath.length > 1 ? <Polyline positions={routedPath} pathOptions={{ color: '#0ea5e9', weight: 5 }} /> : null}
         {routedPath.length <= 1 && fallbackGuidePath.length === 2 ? <Polyline positions={fallbackGuidePath} pathOptions={{ color: '#f59e0b', weight: 4, dashArray: '8 8' }} /> : null}
-        {showHistory && path.length > 1 ? <Polyline positions={path} pathOptions={{ color: '#2563eb', weight: 3, opacity: 0.55 }} /> : null}
       </MapContainer>
     </div>
   );
